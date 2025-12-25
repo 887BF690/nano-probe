@@ -7,7 +7,7 @@
 使用 root 用户执行以下命令：
 
 ```bash
-wget -O install.sh https://github.com/887BF690/nano-probe/blob/main/install.sh && bash install.sh
+wget -O install.sh https://raw.githubusercontent.com/887BF690/nano-probe/refs/heads/main/install.sh && bash install.sh
 ```
 
 ## ✨ 功能特性
