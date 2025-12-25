@@ -1,6 +1,6 @@
 #!/bin/bash
 # =========================================================
-#  Nano Probe v1.1 (Enhanced)
+#  Nano Probe v1.1
 # =========================================================
 
 RED='\033[0;31m'
@@ -135,7 +135,7 @@ if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=$port)
 EOF
 
-    # 2. HTML 前端 (已加入 Uptime 和 连接数展示)
+    # 2. HTML 前端 (已修复离线判定时间，优化稳定性)
     cat <<'EOF' > /usr/local/bin/probe_index.html
 <!DOCTYPE html><html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -185,6 +185,8 @@ td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
     let nodes = {}, historyMap = {}, serverTime = Date.now()/1000;
     let viewMode = localStorage.getItem('v') || 'grid';
     let groupMode = localStorage.getItem('g') === 'true';
+    // 调整离线判定时间为30秒，避免频繁掉线
+    const OFFLINE_THRESHOLD = 30000;
 
     function setView(v) { viewMode = v; localStorage.setItem('v', v); render(); }
     function toggleGroup() { groupMode = !groupMode; localStorage.setItem('g', groupMode); render(); }
@@ -217,7 +219,10 @@ td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
             else if(d.type === 'delete'){ delete nodes[d.name]; }
             render();
         };
-        ws.onclose = () => { setTimeout(connect, 3000); };
+        ws.onclose = () => { 
+            document.getElementById('st').textContent = '● Disconnected';
+            setTimeout(connect, 3000); 
+        };
     }
 
     const buildHeatmap = (data, type, label, cur) => {
@@ -242,7 +247,8 @@ td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
             let html = '<div class="list-view"><table><tr><th>节点</th><th>地区</th><th>运行时长</th><th>CPU</th><th>内存</th><th>硬盘</th><th>流量速率/总计</th><th>连接(T/U)</th><th>IP地址</th><th></th></tr>';
             let lastG = '';
             sorted.forEach(n => {
-                const online = (Date.now()-n.ts) < 15000;
+                // 使用调整后的离线阈值判定
+                const online = (Date.now()-n.ts) < OFFLINE_THRESHOLD;
                 if(groupMode && n.region !== lastG) {
                     lastG = n.region || 'Unknown';
                     html += `<tr class="list-group-row"><td colspan="10">📍 ${lastG}</td></tr>`;
@@ -263,7 +269,8 @@ td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
 
         let html = '<div class="grid">'; let lastG = '';
         sorted.forEach(n => {
-            const online = (Date.now()-n.ts) < 15000;
+            // 使用调整后的离线阈值判定
+            const online = (Date.now()-n.ts) < OFFLINE_THRESHOLD;
             if(groupMode && n.region !== lastG) {
                 lastG = n.region || 'Unknown';
                 html += `<div class="group-title">📍 ${lastG}</div>`;
@@ -286,6 +293,8 @@ td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
         });
         app.innerHTML = html + '</div>';
     }
+    // 定时刷新，确保节点状态准确
+    setInterval(render, 5000);
     connect();
 </script></body></html>
 EOF
@@ -308,7 +317,7 @@ EOF
     echo -e "${GREEN}✅ 服务端安装完成！端口: ${port}${PLAIN}"
 }
 
-# --- 客户端安装 (已加入 Uptime 和 连接数采集) ---
+# --- 客户端安装 ---
 install_client() {
     read -p "服务端 IP: " s_ip
     read -p "服务端端口: " s_port
@@ -324,6 +333,8 @@ SERVER_URL="http://${s_ip}:${s_port}/report"
 SECRET="${secret}"
 NAME="${name}"
 PING_TARGETS='${ping_targets}'
+# 增加上报间隔，每5秒上报一次，降低服务器压力
+REPORT_INTERVAL=5
 
 exec 2> /tmp/probe_client.err
 
@@ -362,18 +373,42 @@ while true; do
     # 增加: Uptime 采集
     UPTIME=\$(awk '{d=int(\$1/86400); h=int((\$1%86400)/3600); m=int((\$1%3600)/60); if(d>0) printf "%dd %dh", d, h; else if(h>0) printf "%dh %dm", h, m; else printf "%dm", m}' /proc/uptime)
     
-    # 增加: 连接数采集 (使用 ss 命令)
+    # 修复: UDP连接数统计逻辑
     TCP_CONN=\$(ss -ant | grep -c ESTAB || echo 0)
-    UDP_CONN=\$(ss -anu | grep -c '' | awk '{print (\$1-1<0?0:\$1-1)}')
+    UDP_CONN=\$(ss -anu | wc -l || echo 0)
+    # 过滤掉ss命令自身的表头，修正UDP连接数
+    UDP_CONN=\$((UDP_CONN - 1))
+    [ \$UDP_CONN -lt 0 ] && UDP_CONN=0
 
-    read -r cpu u n s idle iow irq sirq st g gn < /proc/stat
-    t1=\$((u+n+s+idle+iow+irq+sirq+st)); i1=\$((idle+iow))
+    # ========== 修复：CPU统计逻辑（兼容所有Linux系统） ==========
+    get_cpu_stats() {
+        local stats=(\$(grep '^cpu ' /proc/stat))
+        # stats[0] = cpu, stats[1]=user, stats[2]=nice, stats[3]=system, stats[4]=idle, stats[5]=iowait
+        local user=\${stats[1]}
+        local nice=\${stats[2]}
+        local system=\${stats[3]}
+        local idle=\${stats[4]}
+        local iowait=\${stats[5]}
+        # 总时间 = user + nice + system + idle + iowait + 其他（irq/sirq/steal等）
+        local total=\$((user + nice + system + idle + iowait + \${stats[6]:-0} + \${stats[7]:-0} + \${stats[8]:-0}))
+        local idle_total=\$((idle + iowait))
+        echo "\$total \$idle_total"
+    }
+
+    # 获取第一次CPU状态
+    read t1 i1 < <(get_cpu_stats)
     sleep 1
-    read -r cpu u n s idle iow irq sirq st g gn < /proc/stat
-    t2=\$((u+n+s+idle+iow+irq+sirq+st)); i2=\$((idle+iow))
+    # 获取第二次CPU状态
+    read t2 i2 < <(get_cpu_stats)
+
+    # 计算CPU使用率
     total_delta=\$((t2 - t1))
     idle_delta=\$((i2 - i1))
-    if [ "\$total_delta" -le 0 ]; then cpu_usage=0; else cpu_usage=\$(( 100 * (total_delta - idle_delta) / total_delta )); fi
+    cpu_usage=0
+    if [ "\$total_delta" -gt 0 ]; then
+        cpu_usage=\$(( 100 * (total_delta - idle_delta) / total_delta ))
+    fi
+    # ========== CPU统计逻辑修复结束 ==========
 
     mem_t_kb=\$(grep MemTotal /proc/meminfo | awk '{print \$2}' || echo 0)
     mem_a_kb=\$(grep MemAvailable /proc/meminfo | awk '{print \$2}' || echo 0)
@@ -403,6 +438,9 @@ while true; do
     for pt in \$PING_TARGETS; do
         tn=\$(echo \$pt | cut -d',' -f1); tip=\$(echo \$pt | cut -d',' -f2)
         ms=\$(ping -c 1 -W 1 \$tip 2>/dev/null | grep 'time=' | awk -F'time=' '{print \$2}' | cut -d' ' -f1 || echo 999)
+        # 修复ping值格式问题，确保是数字类型
+        ms=\$(echo \$ms | awk -F'.' '{print \$1}')
+        [ -z "\$ms" ] && ms=999
         p_json+="\"\$pt\":\$ms,"
     done
     p_json="\${p_json%,}}"
@@ -410,7 +448,11 @@ while true; do
     JSON=\$(printf '{"name":"%s","os":"%s","ip":"%s","region":"%s","uptime":"%s","tcp":%d,"udp":%d,"cpu":%d,"mem_p":%d,"mem_u":"%s","mem_t":"%s","disk_p":%d,"disk_u":"%s","disk_t":"%s","rx":"%s","tx":"%s","t_rx":"%s","t_tx":"%s","ping":%s}' \
         "\$NAME" "\$OS" "\$IP" "\$REGION" "\$UPTIME" "\$TCP_CONN" "\$UDP_CONN" "\$cpu_usage" "\$mem_p" "\$mem_u_fmt" "\$mem_t_fmt" "\$disk_p" "\$disk_u_fmt" "\$disk_t_fmt" "\$(calc_bytes \$rx_s)" "\$(calc_bytes \$tx_s)" "\$(calc_bytes \$curr_rx)" "\$(calc_bytes \$curr_tx)" "\$p_json")
     
+    # 发送上报请求
     curl -s -X POST -H "Content-Type: application/json" -H "Auth: \$SECRET" -d "\$JSON" "\$SERVER_URL" > /dev/null
+    
+    # 等待上报间隔，降低服务器压力
+    sleep \$REPORT_INTERVAL
 done
 EOF
 
@@ -433,7 +475,7 @@ EOF
 
 # --- 主菜单 ---
 clear
-echo -e "${CYAN}Nano Probe v1.1 ${PLAIN}"
+echo -e "${CYAN}Nano Probe v1.1  ${PLAIN}"
 echo "----------------------------------------"
 echo "1. 安装/更新 服务端"
 echo "2. 安装/更新 客户端"
