@@ -10,6 +10,12 @@
 wget -O install.sh https://raw.githubusercontent.com/887BF690/nano-probe/refs/heads/main/install.sh && bash install.sh
 ```
 
+![](https://raw.githubusercontent.com/887BF690/nano-probe/refs/heads/main/nano0.png) 
+
+
+![](https://raw.githubusercontent.com/887BF690/nano-probe/refs/heads/main/nano1.png) 
+
+
 ## ✨ 功能特性
 轻量级: 基于 FastAPI (Python) 和原生前端，无重度依赖。
 
