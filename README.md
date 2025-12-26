@@ -34,6 +34,16 @@ Root 权限
 支持 Debian/Ubuntu/CentOS
 
 
+# 📡 Nano Probe v1.2
+
+使用 root 用户执行以下命令：
+
+```bash
+wget -O install.sh https://raw.githubusercontent.com/887BF690/nano-probe/refs/heads/main/install2.sh && bash install.sh
+```
+![](https://raw.githubusercontent.com/887BF690/nano-probe/refs/heads/main/nano2.png) 
+
+
 ## 自定义延时检测 (名称,IP|名称2,IP2): 可选默认 Google
 
 北京移动,211.138.30.66|北京联通,123.123.123.123|江苏电信,218.2.2.2
