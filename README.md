@@ -1,6 +1,6 @@
-# 📡 Nano Probe v1.1
+## 极简、轻量级的服务器监控探针。 1.1   1.2 脚本都可以独立安装，随便用哪个都行，非常适合新手操作。
 
-极简、轻量级的服务器监控探针。支持 CPU、内存、硬盘、实时流量、累积流量、运行时间及 TCP/UDP 连接数监控。
+# 📡 Nano Probe v1.1
 
 ## 🚀 一键安装
 
@@ -39,7 +39,7 @@ Root 权限
 使用 root 用户执行以下命令：
 
 ```bash
-wget -O install.sh https://raw.githubusercontent.com/887BF690/nano-probe/refs/heads/main/install2.sh && bash install.sh
+wget -O install2.sh https://raw.githubusercontent.com/887BF690/nano-probe/refs/heads/main/install2.sh && bash install.sh
 ```
 ![](https://raw.githubusercontent.com/887BF690/nano-probe/refs/heads/main/nano2.png) 
 
