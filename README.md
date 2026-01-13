@@ -26,7 +26,7 @@ wget -O install.sh https://raw.githubusercontent.com/887BF690/nano-probe/refs/he
 使用 root 用户执行以下命令：
 
 ```bash
-wget -O install2.sh https://raw.githubusercontent.com/887BF690/nano-probe/refs/heads/main/install2.sh && bash install.sh
+wget -O install2.sh https://raw.githubusercontent.com/887BF690/nano-probe/refs/heads/main/install2.sh && bash install2.sh
 ```
 ![](https://raw.githubusercontent.com/887BF690/nano-probe/refs/heads/main/nano2.png) 
 
